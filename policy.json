@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "default": "deny",
+  "tools": ["http.get", "fs.write", "send.email", "shell.run"],
+  "rules": [
+    {
+      "id": "allow-research-web",
+      "effect": "allow",
+      "agents": ["researcher"],
+      "tool": "http.get",
+      "when": {
+        "url": {"domain_in": ["*.corp.example", "example.org"]},
+        "method": {"in": ["GET", "HEAD"]}
+      }
+    },
+    {
+      "id": "allow-data-writes",
+      "effect": "allow",
+      "tool": "fs.write",
+      "when": {
+        "path": {"path_within": "/srv/data"}
+      }
+    },
+    {
+      "id": "guard-secret-files",
+      "effect": "deny",
+      "tool": "fs.write",
+      "when": {
+        "path": {"suffix": ".pem"}
+      }
+    },
+    {
+      "id": "gate-outbound-email",
+      "effect": "require-approval",
+      "tool": "send.email",
+      "when": {
+        "to": {"domain_in": ["corp.example"]},
+        "size": {"num_le": 1048576}
+      }
+    },
+    {
+      "id": "no-shell",
+      "effect": "deny",
+      "tool": "shell.run"
+    }
+  ]
+}
