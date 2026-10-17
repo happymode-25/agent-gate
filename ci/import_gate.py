@@ -40,22 +40,36 @@ def _stdlib_dirs() -> list[str]:
 
 
 def _is_stdlib(name: str, dirs: list[str]) -> bool:
+    # Python 3.10+ ships an authoritative table of standard-library module
+    # names. Use it when present; otherwise fall back to asking the interpreter
+    # where each module lives.
     table = getattr(sys, "stdlib_module_names", None)
     if table is not None and name in table:
         return True
-    if name == "importlib.machinery" or name.startswith("importlib."):
-        return True
+
     top = name.split(".", 1)[0]
-    if top in ("importlib",):
+    # `sys`, `time`, `math`, `_ast`, ... are built-in (C) modules with no file
+    # on disk, so PathFinder can never resolve them. On 3.9 there is no
+    # stdlib_module_names table, which is exactly when this matters.
+    if top in sys.builtin_module_names:
+        return True
+    # importlib's own implementation modules are always part of the runtime.
+    if top == "importlib":
         return True
     if top in EXEMPT:
         return True
+
     try:
         from importlib.machinery import PathFinder  # stdlib
         spec = PathFinder.find_spec(name, path=dirs)
     except Exception:
         return False
-    if spec is None or spec.origin is None:
+    if spec is None:
+        return False
+    # Frozen and built-in origins are standard library by definition.
+    if spec.origin in ("built-in", "frozen"):
+        return True
+    if not spec.origin:
         return False
     try:
         origin = pathlib.Path(spec.origin).resolve()
@@ -63,10 +77,16 @@ def _is_stdlib(name: str, dirs: list[str]) -> bool:
         return False
     for d in dirs:
         try:
-            origin.is_relative_to(d)
-            return True
+            base = pathlib.Path(d).resolve()
+        except OSError:
+            continue
+        try:
+            # NOTE: is_relative_to returns a bool and does not raise for a
+            # non-match -- the return value must be tested, not just called.
+            if origin.is_relative_to(base):
+                return True
         except Exception:
-            if str(origin).startswith(d + os_sep()):
+            if str(origin).startswith(str(base) + os_sep()):
                 return True
     return False
 
